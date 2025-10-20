@@ -3,6 +3,33 @@ local cmp = require 'cmp'
 local NAME_REGEX = '\\%([^/\\\\:\\*?<>\'"`\\|]\\)'
 local PATH_REGEX = vim.regex(([[\%(\%(/PAT*[^/\\\\:\\*?<>\'"`\\| .~]\)\|\%(/\.\.\)\)*/\zePAT*$]]):gsub('PAT', NAME_REGEX))
 
+-- Debug logging function
+local log_initialized = false
+local function debug_log(...)
+  local log_file = io.open(vim.fn.expand('~/tmp/cmp.log'), 'a')
+  if log_file then
+    -- Add session separator on first log
+    if not log_initialized then
+      log_file:write('\n' .. string.rep('=', 80) .. '\n')
+      log_file:write('New Session: ' .. os.date('%Y-%m-%d %H:%M:%S') .. '\n')
+      log_file:write(string.rep('=', 80) .. '\n')
+      log_initialized = true
+    end
+
+    local timestamp = os.date('%Y-%m-%d %H:%M:%S')
+    local args = {...}
+    local message = table.concat(vim.tbl_map(function(v)
+      if type(v) == 'table' then
+        return vim.inspect(v)
+      else
+        return tostring(v)
+      end
+    end, args), ' ')
+    log_file:write(timestamp .. ' | ' .. message .. '\n')
+    log_file:close()
+  end
+end
+
 local source = {}
 
 local constants = {
@@ -36,18 +63,28 @@ source.get_keyword_pattern = function(self, params)
 end
 
 source.complete = function(self, params, callback)
+  debug_log('=== complete() called ===')
+  debug_log('cursor_before_line:', params.context.cursor_before_line)
+  debug_log('offset:', params.offset)
+
   local option = self:_validate_option(params)
 
   local dirname = self:_dirname(params, option)
   if not dirname then
+    debug_log('_dirname returned nil - no completions')
     return callback()
   end
 
+  debug_log('dirname:', dirname)
   local include_hidden = string.sub(params.context.cursor_before_line, params.offset, params.offset) == '.'
+  debug_log('include_hidden:', include_hidden)
+
   self:_candidates(dirname, include_hidden, option, function(err, candidates)
     if err then
+      debug_log('_candidates error:', err)
       return callback()
     end
+    debug_log('candidates count:', #candidates)
     callback(candidates)
   end)
 end
@@ -66,50 +103,113 @@ source.resolve = function(self, completion_item, callback)
 end
 
 source._dirname = function(self, params, option)
+  debug_log('--- _dirname() called ---')
+  debug_log('cursor_before_line:', params.context.cursor_before_line)
+
   local s = PATH_REGEX:match_str(params.context.cursor_before_line)
+  debug_log('PATH_REGEX match position:', s)
+
+  -- Fallback: if no PATH_REGEX match, treat current word as filename
   if not s then
+    debug_log('PATH_REGEX did not match')
+    -- Extract current word (for completing bare filenames like "do" -> "docs/")
+    local before_cursor = params.context.cursor_before_line
+    local word_start = before_cursor:match('.*[%s"\']()') or 1
+    local current_word = before_cursor:sub(word_start)
+    debug_log('current_word:', '"' .. current_word .. '"')
+
+    -- Only try to complete if we have a non-empty word
+    if current_word ~= '' then
+      debug_log('treating as bare filename completion from current directory')
+      local buf_dirname = option.get_cwd(params)
+      if vim.api.nvim_get_mode().mode == 'c' then
+        buf_dirname = vim.fn.getcwd()
+      end
+      debug_log('completing from:', buf_dirname)
+      -- Return current directory - filtering will happen in _candidates
+      return buf_dirname
+    end
+
+    debug_log('no valid word to complete - returning nil')
     return nil
   end
 
   local dirname = string.gsub(string.sub(params.context.cursor_before_line, s + 2), '%a*$', '') -- exclude '/'
   local prefix = string.sub(params.context.cursor_before_line, 1, s + 1) -- include '/'
+  debug_log('dirname:', '"' .. dirname .. '"')
+  debug_log('prefix:', '"' .. prefix .. '"')
+
+  -- Early exit: Ignore URLs (contains ://)
+  if prefix:match('://') then
+    debug_log('rejected: contains :// (URL)')
+    return nil
+  end
+
+  -- Early exit: Ignore HTML closing tags
+  if prefix:match('</$') then
+    debug_log('rejected: HTML closing tag')
+    return nil
+  end
+
+  -- Early exit: Ignore math calculation
+  if prefix:match('[%d%)]%s*/$') then
+    debug_log('rejected: math expression')
+    return nil
+  end
+
+  -- Early exit: Ignore / comment (only slashes)
+  if prefix:match('^[%s/]*$') and self:_is_slash_comment() then
+    debug_log('rejected: slash comment')
+    return nil
+  end
 
   local buf_dirname = option.get_cwd(params)
+  debug_log('buf_dirname:', buf_dirname)
+
   if vim.api.nvim_get_mode().mode == 'c' then
     buf_dirname = vim.fn.getcwd()
+    debug_log('command mode - using CWD:', buf_dirname)
   end
+
+  -- Handle specific path prefixes
   if prefix:match('%.%./$') then
+    debug_log('matched ../ pattern')
     return vim.fn.resolve(buf_dirname .. '/../' .. dirname)
   end
-  if (prefix:match('%./$') or prefix:match('"$') or prefix:match('\'$')) then
+
+  if prefix:match('%./$') or prefix:match('"$') or prefix:match('\'$') then
+    debug_log('matched ./ or quote pattern')
     return vim.fn.resolve(buf_dirname .. '/' .. dirname)
   end
+
   if prefix:match('~/$') then
+    debug_log('matched ~/ pattern')
     return vim.fn.resolve(vim.fn.expand('~') .. '/' .. dirname)
   end
+
   local env_var_name = prefix:match('%$([%a_]+)/$')
   if env_var_name then
+    debug_log('matched $ENV/ pattern:', env_var_name)
     local env_var_value = vim.fn.getenv(env_var_name)
     if env_var_value ~= vim.NIL then
       return vim.fn.resolve(env_var_value .. '/' .. dirname)
     end
   end
-  if prefix:match('/$') then
-    local accept = true
-    -- Ignore URL components
-    accept = accept and not prefix:match('%a/$')
-    -- Ignore URL scheme
-    accept = accept and not prefix:match('%a+:/$') and not prefix:match('%a+://$')
-    -- Ignore HTML closing tags
-    accept = accept and not prefix:match('</$')
-    -- Ignore math calculation
-    accept = accept and not prefix:match('[%d%)]%s*/$')
-    -- Ignore / comment
-    accept = accept and (not prefix:match('^[%s/]*$') or not self:_is_slash_comment())
-    if accept then
-      return vim.fn.resolve('/' .. dirname)
-    end
+
+  -- Absolute path (starts with /)
+  if prefix:match('^/$') then
+    debug_log('matched absolute path (starts with /)')
+    return vim.fn.resolve('/' .. dirname)
   end
+
+  -- Fallback: treat as relative path from current directory
+  -- This handles: docs/, src/, lib/, etc.
+  if prefix:match('/$') then
+    debug_log('treating as relative path from current directory')
+    return vim.fn.resolve(buf_dirname .. '/' .. prefix .. dirname)
+  end
+
+  debug_log('no pattern matched - returning nil')
   return nil
 end
 
