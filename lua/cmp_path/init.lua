@@ -69,10 +69,6 @@ source.get_keyword_pattern = function(self, params)
 end
 
 source.complete = function(self, params, callback)
-  debug_log('=== complete() called ===')
-  debug_log('cursor_before_line:', params.context.cursor_before_line)
-  debug_log('offset:', params.offset)
-
   local option = self:_validate_option(params)
 
   -- Check if there's an @ prefix in the current word
@@ -85,35 +81,16 @@ source.complete = function(self, params, callback)
   -- Only prepend @ to candidates if we're completing the FIRST component (no / after @)
   local should_prepend_at = starts_with_at and not current_word:match('^@[^/]*/')
 
-  if should_prepend_at then
-    debug_log('detected @ prefix (first component) - will prepend @ to candidates')
-    debug_log('current_word:', '"' .. current_word .. '"')
-  elseif starts_with_at then
-    debug_log('@ detected but completing nested component - will NOT prepend @')
-    debug_log('current_word:', '"' .. current_word .. '"')
-  end
-
   local dirname = self:_dirname(params, option, starts_with_at)
   if not dirname then
-    debug_log('_dirname returned nil - no completions')
     return callback()
   end
 
-  debug_log('dirname:', dirname)
   local include_hidden = string.sub(params.context.cursor_before_line, params.offset, params.offset) == '.'
-  debug_log('include_hidden:', include_hidden)
 
   self:_candidates(dirname, include_hidden, option, should_prepend_at, function(err, candidates)
     if err then
-      debug_log('_candidates error:', err)
       return callback()
-    end
-    debug_log('candidates count:', #candidates)
-    if #candidates > 0 and #candidates <= 10 then
-      debug_log('candidates:')
-      for i, c in ipairs(candidates) do
-        debug_log('  [' .. i .. '] label="' .. c.label .. '", filterText="' .. (c.filterText or '') .. '"')
-      end
     end
     callback(candidates)
   end)
@@ -133,12 +110,7 @@ source.resolve = function(self, completion_item, callback)
 end
 
 source._dirname = function(self, params, option, starts_with_at)
-  debug_log('--- _dirname() called ---')
-  debug_log('cursor_before_line:', params.context.cursor_before_line)
-  debug_log('starts_with_at:', starts_with_at)
-
   local s = PATH_REGEX:match_str(params.context.cursor_before_line)
-  debug_log('PATH_REGEX match position:', s)
 
   -- Fallback: if no PATH_REGEX match, treat current word as filename
   if not s then
