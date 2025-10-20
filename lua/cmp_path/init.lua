@@ -71,9 +71,9 @@ source.get_keyword_pattern = function(self, params)
 end
 
 source.complete = function(self, params, callback)
-  debug_log('\n=== complete() called ===')
-  debug_log('cursor_before_line:', '"' .. params.context.cursor_before_line .. '"')
-  debug_log('params.offset:', params.offset)
+  -- debug_log('\n=== complete() called ===')
+  -- debug_log('cursor_before_line:', '"' .. params.context.cursor_before_line .. '"')
+  -- debug_log('params.offset:', params.offset)
 
   local option = self:_validate_option(params)
 
@@ -90,9 +90,9 @@ source.complete = function(self, params, callback)
   -- debug_log('starts_with_at:', starts_with_at, 'should_prepend_at:', should_prepend_at)
 
   local dirname = self:_dirname(params, option, starts_with_at)
-  debug_log('dirname result:', dirname)
+  -- debug_log('dirname result:', dirname)
   if not dirname then
-    debug_log('dirname is nil, returning early')
+    -- debug_log('dirname is nil, returning early')
     return callback()
   end
 
@@ -120,19 +120,19 @@ source.resolve = function(self, completion_item, callback)
 end
 
 source._dirname = function(self, params, option, starts_with_at)
-  debug_log('=== _dirname called ===')
-  debug_log('cursor_before_line:', '"' .. params.context.cursor_before_line .. '"')
-  debug_log('starts_with_at:', starts_with_at)
+  -- debug_log('=== _dirname called ===')
+  -- debug_log('cursor_before_line:', '"' .. params.context.cursor_before_line .. '"')
+  -- debug_log('starts_with_at:', starts_with_at)
 
   -- Extract current word being completed (from last space/quote to cursor)
   local before_cursor = params.context.cursor_before_line
   local word_start = before_cursor:match('.*[%s"\']()') or 1
   local current_word = before_cursor:sub(word_start)
-  debug_log('current_word:', '"' .. current_word .. '"')
+  -- debug_log('current_word:', '"' .. current_word .. '"')
 
   -- Early exit: empty word
   if current_word == '' then
-    debug_log('empty word - returning nil')
+    -- debug_log('empty word - returning nil')
     return nil
   end
 
@@ -141,30 +141,30 @@ source._dirname = function(self, params, option, starts_with_at)
   local path = current_word
   if starts_with_at and path:sub(1, 1) == '@' then
     path = path:sub(2)
-    debug_log('stripped @ prefix, path is now:', '"' .. path .. '"')
+    -- debug_log('stripped @ prefix, path is now:', '"' .. path .. '"')
   end
 
   -- Early exit: Ignore URLs (contains ://)
   if path:match('://') then
-    debug_log('rejected: contains :// (URL)')
+    -- debug_log('rejected: contains :// (URL)')
     return nil
   end
 
   -- Early exit: Ignore HTML closing tags
   if path:match('</$') then
-    debug_log('rejected: HTML closing tag')
+    -- debug_log('rejected: HTML closing tag')
     return nil
   end
 
   -- Early exit: Ignore math calculation (number or paren followed by /)
   if path:match('^[%d%)]%s*%/') then
-    debug_log('rejected: math expression')
+    -- debug_log('rejected: math expression')
     return nil
   end
 
   -- Early exit: Ignore / comment (only slashes)
   if path:match('^[%s/]*$') and self:_is_slash_comment() then
-    debug_log('rejected: slash comment')
+    -- debug_log('rejected: slash comment')
     return nil
   end
 
@@ -172,9 +172,9 @@ source._dirname = function(self, params, option, starts_with_at)
   local buf_dirname = option.get_cwd(params)
   if vim.api.nvim_get_mode().mode == 'c' then
     buf_dirname = vim.fn.getcwd()
-    debug_log('command mode - using CWD:', buf_dirname)
+    -- debug_log('command mode - using CWD:', buf_dirname)
   else
-    debug_log('insert mode - using file dir:', buf_dirname)
+    -- debug_log('insert mode - using file dir:', buf_dirname)
   end
 
   -- Parse the path and determine the directory to complete from
@@ -182,7 +182,7 @@ source._dirname = function(self, params, option, starts_with_at)
 
   -- Absolute path: /abs/path
   if path:sub(1, 1) == '/' then
-    debug_log('absolute path detected')
+    -- debug_log('absolute path detected')
     -- Extract directory part (everything before last /)
     local last_slash = path:match('^(.*)/[^/]*$')
     if last_slash then
@@ -190,11 +190,11 @@ source._dirname = function(self, params, option, starts_with_at)
     else
       dir_to_scan = '/'
     end
-    debug_log('scanning directory:', dir_to_scan)
+    -- debug_log('scanning directory:', dir_to_scan)
 
   -- Home directory: ~/path
   elseif path:sub(1, 2) == '~/' then
-    debug_log('home directory path detected')
+    -- debug_log('home directory path detected')
     local home = vim.fn.expand('~')
     local rel_path = path:sub(3) -- Remove '~/'
     local last_slash = rel_path:match('^(.*)/[^/]*$')
@@ -203,11 +203,11 @@ source._dirname = function(self, params, option, starts_with_at)
     else
       dir_to_scan = home
     end
-    debug_log('scanning directory:', dir_to_scan)
+    -- debug_log('scanning directory:', dir_to_scan)
 
   -- Parent directory: ../path
   elseif path:sub(1, 3) == '../' then
-    debug_log('parent directory path detected')
+    -- debug_log('parent directory path detected')
     local rel_path = path
     local last_slash = rel_path:match('^(.*)/[^/]*$')
     if last_slash then
@@ -215,11 +215,11 @@ source._dirname = function(self, params, option, starts_with_at)
     else
       dir_to_scan = buf_dirname .. '/..'
     end
-    debug_log('scanning directory:', dir_to_scan)
+    -- debug_log('scanning directory:', dir_to_scan)
 
   -- Current directory: ./path
   elseif path:sub(1, 2) == './' then
-    debug_log('current directory path detected')
+    -- debug_log('current directory path detected')
     local rel_path = path:sub(3) -- Remove './'
     local last_slash = rel_path:match('^(.*)/[^/]*$')
     if last_slash then
@@ -227,11 +227,11 @@ source._dirname = function(self, params, option, starts_with_at)
     else
       dir_to_scan = buf_dirname
     end
-    debug_log('scanning directory:', dir_to_scan)
+    -- debug_log('scanning directory:', dir_to_scan)
 
   -- Environment variable: $VAR/path
   elseif path:sub(1, 1) == '$' then
-    debug_log('environment variable path detected')
+    -- debug_log('environment variable path detected')
     local env_var_name = path:match('^%$([%a_][%a%d_]*)')
     if env_var_name then
       local env_var_value = vim.fn.getenv(env_var_name)
@@ -248,19 +248,19 @@ source._dirname = function(self, params, option, starts_with_at)
         else
           dir_to_scan = env_var_value
         end
-        debug_log('scanning directory:', dir_to_scan)
+        -- debug_log('scanning directory:', dir_to_scan)
       else
-        debug_log('environment variable not found:', env_var_name)
+        -- debug_log('environment variable not found:', env_var_name)
         return nil
       end
     else
-      debug_log('invalid environment variable syntax')
+      -- debug_log('invalid environment variable syntax')
       return nil
     end
 
   -- Relative path with slashes: docs/nvim/
   elseif path:match('/') then
-    debug_log('relative path with slashes detected')
+    -- debug_log('relative path with slashes detected')
     local last_slash = path:match('^(.*)/[^/]*$')
     if last_slash then
       dir_to_scan = buf_dirname .. '/' .. last_slash
@@ -268,18 +268,18 @@ source._dirname = function(self, params, option, starts_with_at)
       -- This shouldn't happen if path contains /, but handle it
       dir_to_scan = buf_dirname
     end
-    debug_log('scanning directory:', dir_to_scan)
+    -- debug_log('scanning directory:', dir_to_scan)
 
   -- Bare filename: doc (no slashes)
   else
-    debug_log('bare filename detected')
+    -- debug_log('bare filename detected')
     dir_to_scan = buf_dirname
-    debug_log('scanning directory:', dir_to_scan)
+    -- debug_log('scanning directory:', dir_to_scan)
   end
 
   -- Resolve and return the directory
   local resolved = vim.fn.resolve(dir_to_scan)
-  debug_log('resolved directory:', resolved)
+  -- debug_log('resolved directory:', resolved)
   return resolved
 end
 
