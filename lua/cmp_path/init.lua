@@ -69,9 +69,9 @@ source.get_keyword_pattern = function(self, params)
 end
 
 source.complete = function(self, params, callback)
-  debug_log('\n=== complete() called ===')
-  debug_log('cursor_before_line:', '"' .. params.context.cursor_before_line .. '"')
-  debug_log('params.offset:', params.offset)
+  -- debug_log('\n=== complete() called ===')
+  -- debug_log('cursor_before_line:', '"' .. params.context.cursor_before_line .. '"')
+  -- debug_log('params.offset:', params.offset)
 
   local option = self:_validate_option(params)
 
@@ -80,17 +80,17 @@ source.complete = function(self, params, callback)
   local before_cursor = params.context.cursor_before_line
   local word_start = before_cursor:match('.*[%s"\']()') or 1
   local current_word = before_cursor:sub(word_start)
-  debug_log('word_start:', word_start, 'current_word:', '"' .. current_word .. '"')
+  -- debug_log('word_start:', word_start, 'current_word:', '"' .. current_word .. '"')
 
   local starts_with_at = (string.sub(current_word, 1, 1) == '@')
   -- Only prepend @ to candidates if we're completing the FIRST component (no / after @)
   local should_prepend_at = starts_with_at and not current_word:match('^@[^/]*/')
-  debug_log('starts_with_at:', starts_with_at, 'should_prepend_at:', should_prepend_at)
+  -- debug_log('starts_with_at:', starts_with_at, 'should_prepend_at:', should_prepend_at)
 
   local dirname = self:_dirname(params, option, starts_with_at)
-  debug_log('dirname result:', dirname)
+  -- debug_log('dirname result:', dirname)
   if not dirname then
-    debug_log('dirname is nil, returning early')
+    -- debug_log('dirname is nil, returning early')
     return callback()
   end
 
@@ -118,104 +118,104 @@ source.resolve = function(self, completion_item, callback)
 end
 
 source._dirname = function(self, params, option, starts_with_at)
-  debug_log('=== _dirname called ===')
-  debug_log('cursor_before_line:', '"' .. params.context.cursor_before_line .. '"')
-  debug_log('params.offset:', params.offset)
-  debug_log('starts_with_at:', starts_with_at)
+  -- debug_log('=== _dirname called ===')
+  -- debug_log('cursor_before_line:', '"' .. params.context.cursor_before_line .. '"')
+  -- debug_log('params.offset:', params.offset)
+  -- debug_log('starts_with_at:', starts_with_at)
 
   local s = PATH_REGEX:match_str(params.context.cursor_before_line)
-  debug_log('PATH_REGEX match position (s):', s)
+  -- debug_log('PATH_REGEX match position (s):', s)
 
   -- Fallback: if no PATH_REGEX match, treat current word as filename
   if not s then
-    debug_log('PATH_REGEX did not match')
+    -- debug_log('PATH_REGEX did not match')
     -- Extract current word (for completing bare filenames like "do" -> "docs/" or "@do" -> "@docs/")
     local before_cursor = params.context.cursor_before_line
-    debug_log('before_cursor:', '"' .. before_cursor .. '"')
+    -- debug_log('before_cursor:', '"' .. before_cursor .. '"')
     local word_start = before_cursor:match('.*[%s"\']()') or 1
-    debug_log('word_start position:', word_start)
+    -- debug_log('word_start position:', word_start)
     local current_word = before_cursor:sub(word_start)
-    debug_log('current_word:', '"' .. current_word .. '"')
+    -- debug_log('current_word:', '"' .. current_word .. '"')
 
     -- Try to complete if we have a non-empty word
     if current_word ~= '' then
-      debug_log('treating as bare filename completion from current directory')
+      -- debug_log('treating as bare filename completion from current directory')
       local buf_dirname = option.get_cwd(params)
       if vim.api.nvim_get_mode().mode == 'c' then
         buf_dirname = vim.fn.getcwd()
       end
-      debug_log('completing from:', buf_dirname)
+      -- debug_log('completing from:', buf_dirname)
       -- Return current directory - @ prefix will be handled in _candidates
       return buf_dirname
     end
 
-    debug_log('no valid word to complete - returning nil')
+    -- debug_log('no valid word to complete - returning nil')
     return nil
   end
 
   local dirname = string.gsub(string.sub(params.context.cursor_before_line, s + 2), '%a*$', '') -- exclude '/'
   local prefix = string.sub(params.context.cursor_before_line, 1, s + 1) -- include '/'
-  debug_log('dirname:', '"' .. dirname .. '"')
-  debug_log('prefix (raw):', '"' .. prefix .. '"')
+  -- debug_log('dirname:', '"' .. dirname .. '"')
+  -- debug_log('prefix (raw):', '"' .. prefix .. '"')
 
   -- Strip @ from prefix if present (for path resolution)
   -- The @ may be re-added to candidates by _candidates() if completing first component
   if starts_with_at and string.sub(prefix, 1, 1) == '@' then
     prefix = string.sub(prefix, 2)
-    debug_log('stripped @ from prefix:', '"' .. prefix .. '"')
+    -- debug_log('stripped @ from prefix:', '"' .. prefix .. '"')
   end
 
   -- Early exit: Ignore URLs (contains ://)
   if prefix:match('://') then
-    debug_log('rejected: contains :// (URL)')
+    -- debug_log('rejected: contains :// (URL)')
     return nil
   end
 
   -- Early exit: Ignore HTML closing tags
   if prefix:match('</$') then
-    debug_log('rejected: HTML closing tag')
+    -- debug_log('rejected: HTML closing tag')
     return nil
   end
 
   -- Early exit: Ignore math calculation
   if prefix:match('[%d%)]%s*/$') then
-    debug_log('rejected: math expression')
+    -- debug_log('rejected: math expression')
     return nil
   end
 
   -- Early exit: Ignore / comment (only slashes)
   if prefix:match('^[%s/]*$') and self:_is_slash_comment() then
-    debug_log('rejected: slash comment')
+    -- debug_log('rejected: slash comment')
     return nil
   end
 
   local buf_dirname = option.get_cwd(params)
-  debug_log('buf_dirname:', buf_dirname)
+  -- debug_log('buf_dirname:', buf_dirname)
 
   if vim.api.nvim_get_mode().mode == 'c' then
     buf_dirname = vim.fn.getcwd()
-    debug_log('command mode - using CWD:', buf_dirname)
+    -- debug_log('command mode - using CWD:', buf_dirname)
   end
 
   -- Handle specific path prefixes
   if prefix:match('%.%./$') then
-    debug_log('matched ../ pattern')
+    -- debug_log('matched ../ pattern')
     return vim.fn.resolve(buf_dirname .. '/../' .. dirname)
   end
 
   if prefix:match('%./$') or prefix:match('"$') or prefix:match('\'$') then
-    debug_log('matched ./ or quote pattern')
+    -- debug_log('matched ./ or quote pattern')
     return vim.fn.resolve(buf_dirname .. '/' .. dirname)
   end
 
   if prefix:match('~/$') then
-    debug_log('matched ~/ pattern')
+    -- debug_log('matched ~/ pattern')
     return vim.fn.resolve(vim.fn.expand('~') .. '/' .. dirname)
   end
 
   local env_var_name = prefix:match('%$([%a_]+)/$')
   if env_var_name then
-    debug_log('matched $ENV/ pattern:', env_var_name)
+    -- debug_log('matched $ENV/ pattern:', env_var_name)
     local env_var_value = vim.fn.getenv(env_var_name)
     if env_var_value ~= vim.NIL then
       return vim.fn.resolve(env_var_value .. '/' .. dirname)
@@ -224,18 +224,18 @@ source._dirname = function(self, params, option, starts_with_at)
 
   -- Absolute path (starts with /)
   if prefix:match('^/$') then
-    debug_log('matched absolute path (starts with /)')
+    -- debug_log('matched absolute path (starts with /)')
     return vim.fn.resolve('/' .. dirname)
   end
 
   -- Fallback: treat as relative path from current directory
   -- This handles: docs/, src/, lib/, etc.
   if prefix:match('/$') then
-    debug_log('treating as relative path from current directory')
+    -- debug_log('treating as relative path from current directory')
     return vim.fn.resolve(buf_dirname .. '/' .. prefix .. dirname)
   end
 
-  debug_log('no pattern matched - returning nil')
+  -- debug_log('no pattern matched - returning nil')
   return nil
 end
 
