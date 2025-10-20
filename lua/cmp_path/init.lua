@@ -75,14 +75,25 @@ source.complete = function(self, params, callback)
 
   local option = self:_validate_option(params)
 
-  -- Check if there's an @ at the current offset
-  local char_at_offset = string.sub(params.context.cursor_before_line, params.offset, params.offset)
-  local has_at_prefix = (char_at_offset == '@')
-  if has_at_prefix then
-    debug_log('detected @ at offset - will prepend @ to candidates')
+  -- Check if there's an @ prefix in the current word
+  -- Extract the full word being completed (from last whitespace/quote to cursor)
+  local before_cursor = params.context.cursor_before_line
+  local word_start = before_cursor:match('.*[%s"\']()') or 1
+  local current_word = before_cursor:sub(word_start)
+
+  local starts_with_at = (string.sub(current_word, 1, 1) == '@')
+  -- Only prepend @ to candidates if we're completing the FIRST component (no / after @)
+  local should_prepend_at = starts_with_at and not current_word:match('^@[^/]*/')
+
+  if should_prepend_at then
+    debug_log('detected @ prefix (first component) - will prepend @ to candidates')
+    debug_log('current_word:', '"' .. current_word .. '"')
+  elseif starts_with_at then
+    debug_log('@ detected but completing nested component - will NOT prepend @')
+    debug_log('current_word:', '"' .. current_word .. '"')
   end
 
-  local dirname = self:_dirname(params, option)
+  local dirname = self:_dirname(params, option, starts_with_at)
   if not dirname then
     debug_log('_dirname returned nil - no completions')
     return callback()
@@ -92,7 +103,7 @@ source.complete = function(self, params, callback)
   local include_hidden = string.sub(params.context.cursor_before_line, params.offset, params.offset) == '.'
   debug_log('include_hidden:', include_hidden)
 
-  self:_candidates(dirname, include_hidden, option, has_at_prefix, function(err, candidates)
+  self:_candidates(dirname, include_hidden, option, should_prepend_at, function(err, candidates)
     if err then
       debug_log('_candidates error:', err)
       return callback()
@@ -121,9 +132,10 @@ source.resolve = function(self, completion_item, callback)
   callback(completion_item)
 end
 
-source._dirname = function(self, params, option)
+source._dirname = function(self, params, option, starts_with_at)
   debug_log('--- _dirname() called ---')
   debug_log('cursor_before_line:', params.context.cursor_before_line)
+  debug_log('starts_with_at:', starts_with_at)
 
   local s = PATH_REGEX:match_str(params.context.cursor_before_line)
   debug_log('PATH_REGEX match position:', s)
@@ -156,7 +168,14 @@ source._dirname = function(self, params, option)
   local dirname = string.gsub(string.sub(params.context.cursor_before_line, s + 2), '%a*$', '') -- exclude '/'
   local prefix = string.sub(params.context.cursor_before_line, 1, s + 1) -- include '/'
   debug_log('dirname:', '"' .. dirname .. '"')
-  debug_log('prefix:', '"' .. prefix .. '"')
+  debug_log('prefix (raw):', '"' .. prefix .. '"')
+
+  -- Strip @ from prefix if present (for path resolution)
+  -- The @ may be re-added to candidates by _candidates() if completing first component
+  if starts_with_at and string.sub(prefix, 1, 1) == '@' then
+    prefix = string.sub(prefix, 2)
+    debug_log('stripped @ from prefix:', '"' .. prefix .. '"')
+  end
 
   -- Early exit: Ignore URLs (contains ://)
   if prefix:match('://') then
@@ -232,7 +251,7 @@ source._dirname = function(self, params, option)
   return nil
 end
 
-source._candidates = function(_, dirname, include_hidden, option, has_at_prefix, callback)
+source._candidates = function(_, dirname, include_hidden, option, should_prepend_at, callback)
   local fs, err = vim.loop.fs_scandir(dirname)
   if err then
     return callback(err, nil)
@@ -285,8 +304,8 @@ source._candidates = function(_, dirname, include_hidden, option, has_at_prefix,
       end
     end
 
-    -- Prepend @ if detected at offset
-    if has_at_prefix then
+    -- Prepend @ only when completing the first path component
+    if should_prepend_at then
       item.label = '@' .. item.label
       item.filterText = '@' .. item.filterText
       item.insertText = '@' .. item.insertText
