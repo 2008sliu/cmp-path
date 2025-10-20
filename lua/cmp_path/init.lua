@@ -1,6 +1,6 @@
 local cmp = require 'cmp'
 
-local NAME_REGEX = '\\%([^/\\\\:\\*?<>\'"`\\|]\\)'
+local NAME_REGEX = '\\%([^/\\\\:\\*?<>\'"`\\| \\t]\\)'
 local PATH_REGEX = vim.regex(([[\%(\%(/PAT*[^/\\\\:\\*?<>\'"`\\| .~]\)\|\%(/\.\.\)\)*/\zePAT*$]]):gsub('PAT', NAME_REGEX))
 
 -- Debug logging function (disabled by default)
@@ -69,6 +69,10 @@ source.get_keyword_pattern = function(self, params)
 end
 
 source.complete = function(self, params, callback)
+  debug_log('\n=== complete() called ===')
+  debug_log('cursor_before_line:', '"' .. params.context.cursor_before_line .. '"')
+  debug_log('params.offset:', params.offset)
+
   local option = self:_validate_option(params)
 
   -- Check if there's an @ prefix in the current word
@@ -76,13 +80,17 @@ source.complete = function(self, params, callback)
   local before_cursor = params.context.cursor_before_line
   local word_start = before_cursor:match('.*[%s"\']()') or 1
   local current_word = before_cursor:sub(word_start)
+  debug_log('word_start:', word_start, 'current_word:', '"' .. current_word .. '"')
 
   local starts_with_at = (string.sub(current_word, 1, 1) == '@')
   -- Only prepend @ to candidates if we're completing the FIRST component (no / after @)
   local should_prepend_at = starts_with_at and not current_word:match('^@[^/]*/')
+  debug_log('starts_with_at:', starts_with_at, 'should_prepend_at:', should_prepend_at)
 
   local dirname = self:_dirname(params, option, starts_with_at)
+  debug_log('dirname result:', dirname)
   if not dirname then
+    debug_log('dirname is nil, returning early')
     return callback()
   end
 
@@ -110,14 +118,22 @@ source.resolve = function(self, completion_item, callback)
 end
 
 source._dirname = function(self, params, option, starts_with_at)
+  debug_log('=== _dirname called ===')
+  debug_log('cursor_before_line:', '"' .. params.context.cursor_before_line .. '"')
+  debug_log('params.offset:', params.offset)
+  debug_log('starts_with_at:', starts_with_at)
+
   local s = PATH_REGEX:match_str(params.context.cursor_before_line)
+  debug_log('PATH_REGEX match position (s):', s)
 
   -- Fallback: if no PATH_REGEX match, treat current word as filename
   if not s then
     debug_log('PATH_REGEX did not match')
     -- Extract current word (for completing bare filenames like "do" -> "docs/" or "@do" -> "@docs/")
     local before_cursor = params.context.cursor_before_line
+    debug_log('before_cursor:', '"' .. before_cursor .. '"')
     local word_start = before_cursor:match('.*[%s"\']()') or 1
+    debug_log('word_start position:', word_start)
     local current_word = before_cursor:sub(word_start)
     debug_log('current_word:', '"' .. current_word .. '"')
 
