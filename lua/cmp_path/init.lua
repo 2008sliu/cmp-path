@@ -3,9 +3,15 @@ local cmp = require 'cmp'
 local NAME_REGEX = '\\%([^/\\\\:\\*?<>\'"`\\|]\\)'
 local PATH_REGEX = vim.regex(([[\%(\%(/PAT*[^/\\\\:\\*?<>\'"`\\| .~]\)\|\%(/\.\.\)\)*/\zePAT*$]]):gsub('PAT', NAME_REGEX))
 
--- Debug logging function
+-- Debug logging function (disabled by default)
+-- To enable: Set DEBUG_CMP_PATH=1 environment variable before starting nvim
+local DEBUG_ENABLED = vim.env.DEBUG_CMP_PATH == '1'
 local log_initialized = false
 local function debug_log(...)
+  if not DEBUG_ENABLED then
+    return
+  end
+
   local log_file = io.open(vim.fn.expand('~/tmp/cmp.log'), 'a')
   if log_file then
     -- Add session separator on first log
@@ -69,6 +75,13 @@ source.complete = function(self, params, callback)
 
   local option = self:_validate_option(params)
 
+  -- Check if there's an @ at the current offset
+  local char_at_offset = string.sub(params.context.cursor_before_line, params.offset, params.offset)
+  local has_at_prefix = (char_at_offset == '@')
+  if has_at_prefix then
+    debug_log('detected @ at offset - will prepend @ to candidates')
+  end
+
   local dirname = self:_dirname(params, option)
   if not dirname then
     debug_log('_dirname returned nil - no completions')
@@ -79,12 +92,18 @@ source.complete = function(self, params, callback)
   local include_hidden = string.sub(params.context.cursor_before_line, params.offset, params.offset) == '.'
   debug_log('include_hidden:', include_hidden)
 
-  self:_candidates(dirname, include_hidden, option, function(err, candidates)
+  self:_candidates(dirname, include_hidden, option, has_at_prefix, function(err, candidates)
     if err then
       debug_log('_candidates error:', err)
       return callback()
     end
     debug_log('candidates count:', #candidates)
+    if #candidates > 0 and #candidates <= 10 then
+      debug_log('candidates:')
+      for i, c in ipairs(candidates) do
+        debug_log('  [' .. i .. '] label="' .. c.label .. '", filterText="' .. (c.filterText or '') .. '"')
+      end
+    end
     callback(candidates)
   end)
 end
@@ -112,13 +131,13 @@ source._dirname = function(self, params, option)
   -- Fallback: if no PATH_REGEX match, treat current word as filename
   if not s then
     debug_log('PATH_REGEX did not match')
-    -- Extract current word (for completing bare filenames like "do" -> "docs/")
+    -- Extract current word (for completing bare filenames like "do" -> "docs/" or "@do" -> "@docs/")
     local before_cursor = params.context.cursor_before_line
     local word_start = before_cursor:match('.*[%s"\']()') or 1
     local current_word = before_cursor:sub(word_start)
     debug_log('current_word:', '"' .. current_word .. '"')
 
-    -- Only try to complete if we have a non-empty word
+    -- Try to complete if we have a non-empty word
     if current_word ~= '' then
       debug_log('treating as bare filename completion from current directory')
       local buf_dirname = option.get_cwd(params)
@@ -126,7 +145,7 @@ source._dirname = function(self, params, option)
         buf_dirname = vim.fn.getcwd()
       end
       debug_log('completing from:', buf_dirname)
-      -- Return current directory - filtering will happen in _candidates
+      -- Return current directory - @ prefix will be handled in _candidates
       return buf_dirname
     end
 
@@ -213,7 +232,7 @@ source._dirname = function(self, params, option)
   return nil
 end
 
-source._candidates = function(_, dirname, include_hidden, option, callback)
+source._candidates = function(_, dirname, include_hidden, option, has_at_prefix, callback)
   local fs, err = vim.loop.fs_scandir(dirname)
   if err then
     return callback(err, nil)
@@ -265,6 +284,17 @@ source._candidates = function(_, dirname, include_hidden, option, callback)
         item.word = name
       end
     end
+
+    -- Prepend @ if detected at offset
+    if has_at_prefix then
+      item.label = '@' .. item.label
+      item.filterText = '@' .. item.filterText
+      item.insertText = '@' .. item.insertText
+      if item.word then
+        item.word = '@' .. item.word
+      end
+    end
+
     table.insert(items, item)
   end
 
